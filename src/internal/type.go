@@ -1,9 +1,12 @@
 package internal
 
 import (
+	"sync"
+
 	zoxidelib "github.com/lazysegtree/go-zoxide"
 
 	"github.com/yorukot/superfile/src/internal/ui/helpmenu"
+	"github.com/yorukot/superfile/src/internal/ui/spferror"
 
 	"github.com/yorukot/superfile/src/internal/ui/clipboard"
 	"github.com/yorukot/superfile/src/internal/ui/sortmodel"
@@ -15,7 +18,7 @@ import (
 	"github.com/yorukot/superfile/src/internal/ui/processbar"
 	"github.com/yorukot/superfile/src/internal/ui/sidebar"
 
-	"github.com/charmbracelet/bubbles/textinput"
+	"charm.land/bubbles/v2/textinput"
 
 	"github.com/yorukot/superfile/src/internal/ui/prompt"
 	zoxideui "github.com/yorukot/superfile/src/internal/ui/zoxide"
@@ -53,21 +56,27 @@ type model struct {
 	sidebarModel    sidebar.Model
 	processBarModel processbar.Model
 	clipboard       clipboard.Model
+	clipboardWriter func(string) error
 	focusPanel      focusPanelType
 
 	// Modals
-	notifyModel notify.Model
-	typingModal typingModal
-	helpMenu    helpmenu.Model
-	promptModal prompt.Model
-	zoxideModal zoxideui.Model
-	sortModal   sortmodel.Model
+	notifyModel     notify.Model
+	typingModal     typingModal
+	helpMenu        helpmenu.Model
+	promptModal     prompt.Model
+	zoxideModal     zoxideui.Model
+	sortModal       sortmodel.Model
+	spfError        spferror.Model
+	mutexErrorModal sync.Mutex
 
 	// Zoxide client for directory tracking
 	zClient *zoxidelib.Client
 
-	fileMetaData         metadata.Model
-	ioReqCnt             int
+	fileMetaData metadata.Model
+
+	// no use directly for increment, use nextIoReqCnt
+	ioReqCnt int32
+
 	modelQuitState       modelQuitStateType
 	firstTextInput       bool
 	toggleFooter         bool
@@ -92,10 +101,9 @@ type model struct {
 }
 
 type typingModal struct {
-	location      string
-	open          bool
-	textInput     textinput.Model
-	errorMesssage string
+	location  string
+	open      bool
+	textInput textinput.Model
 }
 
 type editorFinishedMsg struct{ err error }

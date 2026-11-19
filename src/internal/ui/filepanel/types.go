@@ -4,8 +4,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/lipgloss/v2"
 
 	"github.com/yorukot/superfile/src/internal/ui/sortmodel"
 )
@@ -51,10 +51,12 @@ type directoryRecord struct {
 
 // Element within a file panel
 type Element struct {
-	Name      string
-	Location  string
-	Directory bool
-	Info      os.FileInfo
+	Name          string
+	Location      string
+	Directory     bool
+	Info          os.FileInfo
+	ChildCount    int
+	ChildCountErr error
 }
 
 // Type representing the mode of the panel

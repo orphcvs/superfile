@@ -1,14 +1,17 @@
 package common
 
 import (
+	"strings"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 
 	"github.com/yorukot/superfile/src/config/icon"
 )
 
 const (
+	// SidebarDividerLength defines the number of characters used for the horizontal divider in the sidebar.
+	SidebarDividerLength  = 20
 	WheelRunTime          = 5
 	DefaultCommandTimeout = 5000 * time.Millisecond
 	DateModifiedOption    = "Date Modified"
@@ -142,16 +145,18 @@ func wrapFilePreviewErrorMsg(msg string) string {
 // LoadThemeConfig() in style.go should be finished
 // loadConfigFile() in config_types.go should be finished
 // InitIcon() in config package in function.go should be finished
+// LoadPrerenderedVariables populates global UI component variables with their styled versions.
+// This should be called after theme and icons are initialized.
 func LoadPrerenderedVariables() {
+	divider := " " + strings.Repeat("─", SidebarDividerLength)
 	SideBarSuperfileTitle = SidebarTitleStyle.Render(" " + icon.SuperfileIcon + icon.Space + "superfile")
-	SideBarHomeDivider = SidebarTitleStyle.Render(icon.Home+icon.Space+"Home") +
-		SidebarDividerStyle.Render(" ─────────────")
-
-	SideBarPinnedDivider = SidebarTitleStyle.Render(icon.Pinned+icon.Space+"Pinned") +
-		SidebarDividerStyle.Render(" ───────────")
-
-	SideBarDisksDivider = SidebarTitleStyle.Render(icon.Disk+icon.Space+"Disks") +
-		SidebarDividerStyle.Render(" ────────────")
+	SideBarHomeDivider = SidebarTitleStyle.Render(icon.Home+icon.Space+"Home") + SidebarDividerStyle.Render(divider)
+	SideBarPinnedDivider = SidebarTitleStyle.Render(
+		icon.Pinned+icon.Space+"Pinned",
+	) + SidebarDividerStyle.Render(
+		divider,
+	)
+	SideBarDisksDivider = SidebarTitleStyle.Render(icon.Disk+icon.Space+"Disks") + SidebarDividerStyle.Render(divider)
 
 	SideBarNoneText = SidebarStyle.Render(" " + icon.Error + icon.Space + "None")
 
@@ -182,7 +187,7 @@ func LoadPrerenderedVariables() {
 	FilePreviewUnsupportedImageFormatsText = wrapFilePreviewErrorMsg(
 		"Unsupported image formats")
 	FilePreviewImageConversionErrorText = wrapFilePreviewErrorMsg(
-		"Error convert image to ansi")
+		"Error converting image to ANSI")
 	FilePreviewBatNotInstalledText = wrapFilePreviewErrorMsg(
 		"'bat' is not installed or not found")
 	FilePreviewThumbnailGenerationErrorText = wrapFilePreviewErrorMsg(

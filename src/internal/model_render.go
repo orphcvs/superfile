@@ -4,11 +4,9 @@ import (
 	"path/filepath"
 	"strconv"
 
-	filepreview "github.com/yorukot/superfile/src/pkg/file_preview"
-
 	"github.com/yorukot/superfile/src/internal/common"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 
 	"github.com/yorukot/superfile/src/config/icon"
 )
@@ -37,12 +35,12 @@ func (m *model) terminalSizeWarnRender() string {
 	fullWidthString = common.TerminalCorrectSize.Render(fullWidthString)
 
 	heightString := common.MainStyle.Render(" Height = ")
-	return common.FullScreenStyle(m.fullHeight, m.fullWidth).Render(`Terminal size too small:`+"\n"+
-		"Width = "+fullWidthString+
-		heightString+fullHeightString+"\n\n"+
-		"Needed for current config:"+"\n"+
-		"Width = "+common.TerminalCorrectSize.Render(minimumWidthString)+
-		heightString+common.TerminalCorrectSize.Render(minimumHeightString)) + filepreview.ClearKittyImages()
+	return common.FullScreenStyle(m.fullHeight, m.fullWidth).Render(`Terminal size too small:` + "\n" +
+		"Width = " + fullWidthString +
+		heightString + fullHeightString + "\n\n" +
+		"Needed for current config:" + "\n" +
+		"Width = " + common.TerminalCorrectSize.Render(minimumWidthString) +
+		heightString + common.TerminalCorrectSize.Render(minimumHeightString))
 }
 
 func (m *model) terminalSizeWarnAfterFirstRender() string {
@@ -64,12 +62,12 @@ func (m *model) terminalSizeWarnAfterFirstRender() string {
 	fullWidthString = common.TerminalCorrectSize.Render(fullWidthString)
 
 	heightString := common.MainStyle.Render(" Height = ")
-	return common.FullScreenStyle(m.fullHeight, m.fullWidth).Render(`You change your terminal size too small:`+"\n"+
-		"Width = "+fullWidthString+
-		heightString+fullHeightString+"\n\n"+
-		"Needed for current config:"+"\n"+
-		"Width = "+common.TerminalCorrectSize.Render(minimumWidthString)+
-		heightString+common.TerminalCorrectSize.Render(minimumHeightString)) + filepreview.ClearKittyImages()
+	return common.FullScreenStyle(m.fullHeight, m.fullWidth).Render(`Your terminal size is too small:` + "\n" +
+		"Width = " + fullWidthString +
+		heightString + fullHeightString + "\n\n" +
+		"Needed for current config:" + "\n" +
+		"Width = " + common.TerminalCorrectSize.Render(minimumWidthString) +
+		heightString + common.TerminalCorrectSize.Render(minimumHeightString))
 }
 
 func (m *model) typineModalRender() string {
@@ -87,13 +85,9 @@ func (m *model) typineModalRender() string {
 		lipgloss.NewStyle().Background(common.ModalBGColor).Render("           ") +
 		cancel
 
-	var err string
-	if m.typingModal.errorMesssage != "" {
-		err = "\n\n" + common.ModalErrorStyle.Render(m.typingModal.errorMesssage)
-	}
 	// TODO : Move this all to rendering package to avoid specifying newlines manually
 	return common.ModalBorderStyle(common.ModalHeight, common.ModalWidth).
-		Render(fileLocation + "\n" + m.typingModal.textInput.View() + "\n\n" + tip + err)
+		Render(fileLocation + "\n" + m.typingModal.textInput.View() + "\n\n" + tip)
 }
 
 func (m *model) introduceModalRender() string {

@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/yorukot/superfile/src/pkg/utils"
 
@@ -24,8 +24,8 @@ func (m *model) parentDirectory() {
 	}
 }
 
-// Enter directory or open file with default application
-// TODO: Unit test this
+// enterPanel enters a directory, opens a file with default application, or writes
+// selected/focused paths to the chooser file and exits if --chooser-file mode is enabled.
 func (m *model) enterPanel() {
 	panel := m.getFocusedFilePanel()
 
@@ -57,7 +57,7 @@ func (m *model) enterPanel() {
 	}
 
 	if variable.ChooserFile != "" {
-		chooserErr := m.chooserFileWriteAndQuit(panel.GetFocusedItem().Location)
+		chooserErr := m.chooserFileWriteAndQuit(m.getSelectedOrFocusedPaths(panel))
 		if chooserErr == nil {
 			return
 		}
@@ -80,6 +80,7 @@ func (m *model) executeOpenCommand() {
 		dllpath := filepath.Join(os.Getenv("SYSTEMROOT"), "System32", "rundll32.exe")
 		dllfile := "url.dll,FileProtocolHandler"
 
+		//nolint:gosec // Uses Windows system handler to open the selected file.
 		cmd := exec.Command(dllpath, dllfile, filePath)
 		err := cmd.Start()
 		if err != nil {
@@ -154,7 +155,7 @@ func (m *model) searchBarFocus() {
 	}
 
 	// config search bar width
-	panel.SearchBar.Width = m.fileModel.SinglePanelWidth - common.InnerPadding
+	panel.SearchBar.SetWidth(m.fileModel.SinglePanelWidth - common.InnerPadding)
 }
 
 func (m *model) sidebarSearchBarFocus() {

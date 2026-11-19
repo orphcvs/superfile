@@ -1,9 +1,9 @@
 package common
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
+	"image/color"
 	"io"
 	"log/slog"
 	"math"
@@ -13,15 +13,16 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/yorukot/superfile/src/pkg/utils"
 )
 
 // Size calculation constants
 const (
 	KilobyteSize      = 1000 // SI decimal unit
 	KibibyteSize      = 1024 // Binary unit
-	TabWidth          = 4    // Standard tab expansion width
 	DefaultBufferSize = 1024 // Default buffer size for string operations
 	NonBreakingSpace  = 0xa0 // Unicode non-breaking space
 	EscapeChar        = 0x1b // ANSI escape character
@@ -83,7 +84,7 @@ func FilePanelItemRenderWithIcon(
 	isDir bool,
 	isLink bool,
 	isSelected bool,
-	bgColor lipgloss.Color,
+	bgColor color.Color,
 ) string {
 	style := GetElementIcon(name, isDir, isLink, Config.Nerdfont)
 	iconData := style.Icon + " "
@@ -100,7 +101,7 @@ func FilePanelItemRenderWithIcon(
 func FilePanelItemRender(data string,
 	width int,
 	isSelected bool,
-	bgColor lipgloss.Color,
+	bgColor color.Color,
 	alignment lipgloss.Position,
 ) string {
 	outputData := ansi.Truncate(data, width, "...")
@@ -126,14 +127,25 @@ func ClipboardPrettierName(name string, width int, isDir bool, isLink bool, isSe
 }
 
 func FileNameWithoutExtension(fileName string) string {
+	if fileName == "" {
+		return ""
+	}
+	dir := filepath.Dir(fileName)
+	if dir == "." { // file name don't contains any directory
+		dir = ""
+	}
+	fileNameOnly := filepath.Base(fileName)
 	for {
-		pos := strings.LastIndexByte(fileName, '.')
+		pos := strings.LastIndexByte(fileNameOnly, '.')
 		if pos <= 0 {
 			break
 		}
-		fileName = fileName[:pos]
+		fileNameOnly = fileNameOnly[:pos]
 	}
-	return fileName
+	if dir == "" {
+		return fileNameOnly
+	}
+	return filepath.Join(dir, fileNameOnly)
 }
 
 func unitsDec() [7]string {
@@ -158,10 +170,12 @@ func formatSizeInternal(size int64, power int, unitlist [7]string) string {
 
 func FormatFileSize(size int64) string {
 	units := unitsBin()
+	power := KibibyteSize
 	if Config.FileSizeUseSI {
 		units = unitsDec()
+		power = KilobyteSize
 	}
-	return formatSizeInternal(size, KibibyteSize, units)
+	return formatSizeInternal(size, power, units)
 }
 
 func GetHelpMenuHotkeyString(hotkeys []string) string {
@@ -181,13 +195,25 @@ func GetHelpMenuHotkeyString(hotkeys []string) string {
 	return hotkey.String()
 }
 
-// Separated this out out for easy testing
-func IsBufferPrintable(buffer []byte) bool {
-	for _, b := range buffer {
-		// This will also handle b==0
-		if !unicode.IsPrint(rune(b)) && !unicode.IsSpace(rune(b)) {
+// Separated this out out for easy testing.
+// atEOF indicates whether buffer is a complete trailing slice of the input
+// (true EOF). Incomplete UTF-8 at the end is allowed when atEOF is false
+// (fixed-size reads may truncate a multi-byte rune), but rejected at EOF.
+func IsBufferPrintable(buffer []byte, atEOF bool) bool {
+	i := 0
+	for i < len(buffer) {
+		if !utf8.FullRune(buffer[i:]) {
+			return !atEOF
+		}
+		r, n := utf8.DecodeRune(buffer[i:])
+		if r == utf8.RuneError && n == 1 {
 			return false
 		}
+		// Allow UTF-8 BOM (U+FEFF); unicode.IsPrint/IsSpace reject it.
+		if r != '\uFEFF' && !unicode.IsPrint(r) && !unicode.IsSpace(r) {
+			return false
+		}
+		i += n
 	}
 	return true
 }
@@ -218,13 +244,23 @@ func IsTextFile(filename string) (bool, error) {
 	}
 	defer file.Close()
 
-	reader := bufio.NewReader(file)
 	buffer := make([]byte, DefaultBufferSize)
-	cnt, err := reader.Read(buffer)
-	if err != nil && !errors.Is(err, io.EOF) {
+	cnt, err := io.ReadFull(file, buffer)
+	switch {
+	case err == nil:
+		// Full buffer filled; peek one byte to distinguish exact-size EOF
+		// from a mid-file truncation of a multi-byte UTF-8 sequence.
+		var extra [1]byte
+		n, err2 := file.Read(extra[:])
+		if err2 != nil && !errors.Is(err2, io.EOF) {
+			return false, err2
+		}
+		return IsBufferPrintable(buffer, n == 0), nil
+	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
+		return IsBufferPrintable(buffer[:cnt], true), nil
+	default:
 		return false, err
 	}
-	return IsBufferPrintable(buffer[:cnt]), nil
 }
 
 // Although some characters like `\x0b`(vertical tab) are printable,
@@ -237,6 +273,10 @@ func IsTextFile(filename string) (bool, error) {
 // This function should better not be broken into multiple functions
 func MakePrintableWithEscCheck(line string, allowEsc bool) string { //nolint: gocognit // See above
 	var sb strings.Builder
+	// where the current line starts in sb, so we can measure the column for tabs
+
+	lastSegmentStart := 0
+
 	for _, r := range line {
 		if r == utf8.RuneError {
 			continue
@@ -247,11 +287,11 @@ func MakePrintableWithEscCheck(line string, allowEsc bool) string { //nolint: go
 			sb.WriteRune(r)
 			continue
 		}
-		// It needs to be handled separately since considered a space,
-		// Since we are using ansi.StringWidth() for truncation, and \t is
-		// considered zero width
+		// \t is zero-width, expand it to the next tab stop based on current column
 		if r == '\t' {
-			sb.WriteString("    ")
+			newSegmentSize := ansi.StringWidth(sb.String()[lastSegmentStart:])
+			sb.WriteString(strings.Repeat(" ", utils.TabWidth-newSegmentSize%utils.TabWidth))
+			lastSegmentStart = sb.Len()
 			continue
 		}
 		if r == EscapeChar {
@@ -270,7 +310,11 @@ func MakePrintableWithEscCheck(line string, allowEsc bool) string { //nolint: go
 			sb.WriteRune(r)
 			continue
 		}
-		if unicode.IsGraphic(r) || r == rune('\n') {
+		if r == rune('\n') {
+			sb.WriteRune(r)
+			lastSegmentStart = sb.Len()
+		}
+		if unicode.IsGraphic(r) {
 			sb.WriteRune(r)
 		}
 	}

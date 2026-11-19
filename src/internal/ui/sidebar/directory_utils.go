@@ -7,11 +7,12 @@ import (
 
 	"github.com/adrg/xdg"
 
+	"github.com/yorukot/superfile/src/internal/common"
+
 	"github.com/yorukot/superfile/src/pkg/utils"
 
 	variable "github.com/yorukot/superfile/src/config"
 	"github.com/yorukot/superfile/src/config/icon"
-	"github.com/yorukot/superfile/src/internal/common"
 )
 
 // Fuzzy search function for a list of directories.
@@ -53,22 +54,23 @@ func getDirectories(pinnedMgr *PinnedManager, sections []string) []directory {
 // Return system default directory e.g. Home, Downloads, etc
 func getWellKnownDirectories() []directory {
 	wellKnownDirectories := []directory{
-		{Location: xdg.Home, Name: icon.Home + icon.Space + "Home"},
-		{Location: xdg.UserDirs.Desktop, Name: icon.Desktop + icon.Space + "Desktop"},
-		{Location: xdg.UserDirs.Download, Name: icon.Download + icon.Space + "Downloads"},
-		{Location: xdg.UserDirs.Documents, Name: icon.Documents + icon.Space + "Documents"},
-		{Location: xdg.UserDirs.Pictures, Name: icon.Pictures + icon.Space + "Pictures"},
-		{Location: xdg.UserDirs.Videos, Name: icon.Videos + icon.Space + "Videos"},
-		{Location: xdg.UserDirs.Music, Name: icon.Music + icon.Space + "Music"},
-		{Location: xdg.UserDirs.Templates, Name: icon.Templates + icon.Space + "Templates"},
-		{Location: xdg.UserDirs.PublicShare, Name: icon.PublicShare + icon.Space + "PublicShare"},
+		{Location: xdg.Home, Icon: icon.Home, Name: "Home"},
+		{Location: xdg.UserDirs.Desktop, Icon: icon.Desktop, Name: "Desktop"},
+		{Location: xdg.UserDirs.Download, Icon: icon.Download, Name: "Downloads"},
+		{Location: xdg.UserDirs.Documents, Icon: icon.Documents, Name: "Documents"},
+		{Location: xdg.UserDirs.Pictures, Icon: icon.Pictures, Name: "Pictures"},
+		{Location: xdg.UserDirs.Videos, Icon: icon.Videos, Name: "Videos"},
+		{Location: xdg.UserDirs.Music, Icon: icon.Music, Name: "Music"},
+		{Location: xdg.UserDirs.Templates, Icon: icon.Templates, Name: "Templates"},
+		{Location: xdg.UserDirs.PublicShare, Icon: icon.PublicShare, Name: "PublicShare"},
 	}
 
 	// Add Trash directory for Linux only
 	if runtime.GOOS == utils.OsLinux {
 		wellKnownDirectories = append(wellKnownDirectories, directory{
 			Location: variable.LinuxTrashDirectory,
-			Name:     icon.Trash + icon.Space + "Trash",
+			Icon:     icon.Trash,
+			Name:     "Trash",
 		})
 	}
 
@@ -81,13 +83,12 @@ func getWellKnownDirectories() []directory {
 func getPinnedDirectoriesWithIcon(pinnedMgr *PinnedManager) []directory {
 	dirs := pinnedMgr.Load()
 	for i := range dirs {
-		iconInfo := common.GetElementIcon(dirs[i].Name, true, false, common.Config.Nerdfont)
-		dirs[i].Name = iconInfo.Icon + icon.Space + dirs[i].Name
+		dirs[i].Icon = common.GetDirectoryIcon(dirs[i].Location, dirs[i].Name, common.Config.Nerdfont)
 	}
 	return dirs
 }
 
-// Get filtered directories using fuzzy search logic with three haystacks.
+// getFilteredDirectories returns a list of directories that match the fuzzy search query across all sections.
 func getFilteredDirectories(query string, pinnedMgr *PinnedManager, sections []string) []directory {
 	return formDirctorySlice(
 		fuzzySearch(query, getWellKnownDirectories()),
@@ -97,27 +98,40 @@ func getFilteredDirectories(query string, pinnedMgr *PinnedManager, sections []s
 	)
 }
 
+// formDirctorySlice assembles the final list of directories for the sidebar based on the configured sections.
+// It ensures that dividers are only added between non-empty sections.
 func formDirctorySlice(homeDirectories []directory, pinnedDirectories []directory,
 	diskDirectories []directory, sections []string) []directory {
-	// Preallocation for efficiency
 	totalCapacity := len(homeDirectories) + len(pinnedDirectories) + len(diskDirectories) + directoryCapacityForDividers
 	directories := make([]directory, 0, totalCapacity)
 
 	for _, section := range sections {
 		switch section {
 		case utils.SidebarSectionHome:
-			if len(directories) > 0 {
-				directories = append(directories, homeDividerDir)
-			}
-			directories = append(directories, homeDirectories...)
+			directories = appendSection(directories, utils.SidebarSectionHome, homeDividerDir, homeDirectories)
 		case utils.SidebarSectionPinned:
-			directories = append(directories, pinnedDividerDir)
-			directories = append(directories, pinnedDirectories...)
+			directories = appendSection(directories, utils.SidebarSectionPinned, pinnedDividerDir, pinnedDirectories)
 		case utils.SidebarSectionDisks:
-			directories = append(directories, diskDividerDir)
-			directories = append(directories, diskDirectories...)
+			directories = appendSection(directories, utils.SidebarSectionDisks, diskDividerDir, diskDirectories)
 		}
 	}
 
 	return directories
+}
+
+func appendSection(dirs []directory, sectionName string, divider directory, items []directory) []directory {
+	if len(items) == 0 {
+		return dirs
+	}
+
+	if len(dirs) > 0 {
+		dirs = append(dirs, divider)
+	}
+
+	for i := range items {
+		items[i].Section = sectionName
+		dirs = append(dirs, items[i])
+	}
+
+	return dirs
 }

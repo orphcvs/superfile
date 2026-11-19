@@ -9,6 +9,7 @@ const keyValueSpacingLen = 1
 const fileStatErrorMsg = "Cannot load file stats"
 const linkFileBrokenMsg = "Link file is broken!"
 const etFetchErrorMsg = "Errors while fetching metadata via exiftool"
+const dirSizeUnfocusedMsg = "(focus)"
 
 const keyName = "Name"
 const keySize = "Size"
@@ -18,6 +19,7 @@ const keyPermissions = "Permissions"
 const keyMd5Checksum = "MD5Checksum"
 const keyOwner = "Owner"
 const keyGroup = "Group"
+const keyAttributes = "Attributes"
 const keyPath = "Path"
 const keyArchitecture = "Architecture"
 const borderSize = 2

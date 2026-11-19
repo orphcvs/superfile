@@ -24,13 +24,12 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y exiftool
-          curl -sS https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | bash
+          sudo apt-get install -y exiftool zoxide
 
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.25.5'
+          go-version-file: go.mod
 
       - name: Cache Go modules
         uses: actions/cache@v5
@@ -67,5 +66,5 @@ jobs:
         if: runner.os != 'Windows'
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.8.0
+          version: v2.12.2
           args: --timeout 3m

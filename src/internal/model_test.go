@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/yorukot/superfile/src/pkg/utils"
@@ -18,7 +18,13 @@ import (
 
 	variable "github.com/yorukot/superfile/src/config"
 	"github.com/yorukot/superfile/src/internal/common"
+	"github.com/yorukot/superfile/src/internal/ui/notify"
 	"github.com/yorukot/superfile/src/internal/ui/processbar"
+	"github.com/yorukot/superfile/src/internal/ui/prompt"
+	"github.com/yorukot/superfile/src/internal/ui/sidebar"
+	"github.com/yorukot/superfile/src/internal/ui/sortmodel"
+	"github.com/yorukot/superfile/src/internal/ui/spferror"
+	zoxideui "github.com/yorukot/superfile/src/internal/ui/zoxide"
 )
 
 /*
@@ -212,14 +218,17 @@ func TestChooserFile(t *testing.T) {
 	dir1 := filepath.Join(curTestDir, "dir1")
 	dir2 := filepath.Join(curTestDir, "dir2")
 	file1 := filepath.Join(dir1, "file1.txt")
+	file2 := filepath.Join(dir1, "file2.txt")
 	testChooserFile := filepath.Join(dir2, "chooser_file.txt")
 	utils.SetupDirectories(t, curTestDir, dir1, dir2)
-	utils.SetupFiles(t, file1)
+	utils.SetupFiles(t, file1, file2)
 
 	testdata := []struct {
 		name            string
 		chooserFile     string
 		hotkey          string
+		selectMode      bool
+		selectedFiles   []string
 		expectedQuit    bool
 		expectedContent string
 	}{
@@ -231,9 +240,41 @@ func TestChooserFile(t *testing.T) {
 			expectedContent: file1,
 		},
 		{
+			name:            "Open with default app with multiple selected files",
+			chooserFile:     testChooserFile,
+			hotkey:          common.Hotkeys.Confirm[0],
+			selectedFiles:   []string{file1, file2},
+			expectedQuit:    true,
+			expectedContent: file1 + "\n" + file2,
+		},
+		{
+			name:            "Open with default app with no selection falls back to focused item",
+			chooserFile:     testChooserFile,
+			hotkey:          common.Hotkeys.Confirm[0],
+			expectedQuit:    true,
+			expectedContent: file1,
+		},
+		{
 			name:            "Open with file editor with valid chooser file",
 			chooserFile:     testChooserFile,
 			hotkey:          common.Hotkeys.OpenFileWithEditor[0],
+			expectedQuit:    true,
+			expectedContent: file1,
+		},
+		{
+			name:            "Open with file editor with multiple selected files",
+			chooserFile:     testChooserFile,
+			hotkey:          common.Hotkeys.OpenFileWithEditor[0],
+			selectMode:      true,
+			selectedFiles:   []string{file1, file2},
+			expectedQuit:    true,
+			expectedContent: file1 + "\n" + file2,
+		},
+		{
+			name:            "Open with file editor in select mode with no selection falls back to focused item",
+			chooserFile:     testChooserFile,
+			hotkey:          common.Hotkeys.OpenFileWithEditor[0],
+			selectMode:      true,
 			expectedQuit:    true,
 			expectedContent: file1,
 		},
@@ -264,6 +305,12 @@ func TestChooserFile(t *testing.T) {
 	for _, tt := range testdata {
 		t.Run(tt.name, func(t *testing.T) {
 			m := defaultTestModel(dir1)
+			if tt.selectMode {
+				m.getFocusedFilePanel().ChangeFilePanelMode()
+			}
+			if len(tt.selectedFiles) > 0 {
+				m.getFocusedFilePanel().SetSelectedAll(tt.selectedFiles)
+			}
 			if tt.expectedQuit {
 				err := os.WriteFile(tt.chooserFile, []byte{}, 0o644)
 				require.NoError(t, err)
@@ -314,12 +361,8 @@ func TestAsyncPreviewPanelSync(t *testing.T) {
 	utils.SetupFilesWithData(t, []byte(content2), file2)
 
 	m := defaultTestModelWithFilePreview(curTestDir)
-	p := NewTestTeaProgWithEventLoop(t, m)
-
-	// We need to send message via event loop to ensure that preview load command
-	// is actually processed, also we want a size bigger than default
-	// to allow more number of panels
-	p.Send(tea.WindowSizeMsg{Width: 4 * DefaultTestModelWidth, Height: 4 * DefaultTestModelHeight})
+	// we want a size bigger than default to allow more number of panels
+	p := NewTestTeaProgWithEventLoopWithWinSize(t, m, 4*DefaultTestModelWidth, 4*DefaultTestModelHeight)
 
 	eventuallyEnsurePreviewContent(t, m, content1, "file1 content should load initially")
 	pW := m.fileModel.FilePreview.GetContentWidth()
@@ -332,7 +375,7 @@ func TestAsyncPreviewPanelSync(t *testing.T) {
 	assert.NotEqual(t, pW, m.fileModel.FilePreview.GetContentWidth(),
 		"width should change on new panel creation")
 
-	p.Send(tea.KeyMsg{Type: tea.KeyDown})
+	p.Send(tea.KeyPressMsg{Code: tea.KeyDown})
 	t.Logf("Current element : %s", m.getFocusedFilePanel().GetFocusedItem().Location)
 	eventuallyEnsurePreviewContent(t, m, content2, "content should update to file2")
 
@@ -348,4 +391,84 @@ func TestAsyncPreviewPanelSync(t *testing.T) {
 	p.Send(tea.WindowSizeMsg{Width: 6 * DefaultTestModelWidth,
 		Height: 6 * DefaultTestModelHeight})
 	eventuallyEnsurePreviewContent(t, m, content1, "content should update to file1 after resize")
+}
+
+func prepareLockUnlockTest(t *testing.T) *model {
+	curTestDir := t.TempDir()
+
+	originalPreviewWidth := common.Config.FilePreviewWidth
+	common.Config.FilePreviewWidth = 0
+	t.Cleanup(func() {
+		common.Config.FilePreviewWidth = originalPreviewWidth
+	})
+
+	file1, content1 := filepath.Join(curTestDir, "file1.txt"), "File 1 content"
+	file2, content2 := filepath.Join(curTestDir, "file2.txt"), "File 2 content"
+	utils.SetupFilesWithData(t, []byte(content1), file1)
+	utils.SetupFilesWithData(t, []byte(content2), file2)
+
+	m := defaultTestModelWithFilePreview(curTestDir)
+	processor := func(items []string) (processbar.Process, []string) {
+		return processbar.NewProcess("1", "test", processbar.OpCopy, 10), []string{}
+	}
+	finalizer := func(state processbar.ProcessState, reqId int) tea.Msg { return NewPasteOperationMsg(state, reqId) }
+	m.spfError = spferror.New(true,
+		"error",
+		"ERROR TEST", spferror.NewFileListError([]string{file1}, processor, finalizer))
+	m.spfError.Open()
+	return m
+}
+
+func TestUnlockErrorModalMutex(t *testing.T) {
+	t.Run("After handling error mutex must be unlocked", func(t *testing.T) {
+		m := prepareLockUnlockTest(t)
+		m.mutexErrorModal.Lock()
+		assert.False(t, m.mutexErrorModal.TryLock())
+		m.handleKeyInput(tea.KeyPressMsg{Code: tea.KeyEnter})
+		assert.True(t, m.mutexErrorModal.TryLock())
+	})
+
+	t.Run("Error modal must be handled on top", func(t *testing.T) {
+		m := prepareLockUnlockTest(t)
+		m.mutexErrorModal.Lock()
+		m.typingModal = typingModal{open: true}
+		pModel := prompt.DefaultModel(10, 10)
+		pModel.Open(false)
+		m.promptModal = pModel
+		zModel := zoxideui.GenerateModel(nil, 50, 80)
+		zModel.Open()
+		m.zoxideModal = zModel
+		m.notifyModel = notify.New(true, "test", "test", notify.RenameAction)
+		m.sidebarModel = sidebar.New()
+		m.sidebarModel.PinnedItemRename()
+		m.getFocusedFilePanel().SearchBar.Focus()
+		m.sidebarModel.SearchBarFocus()
+		m.sortModal.Open(sortmodel.SortByName)
+		m.helpMenu.Open()
+
+		assert.False(t, m.mutexErrorModal.TryLock())
+		m.handleKeyInput(tea.KeyPressMsg{Code: tea.KeyEnter})
+		assert.True(t, m.mutexErrorModal.TryLock())
+	})
+	t.Run("Error modal must be rendered on top", func(t *testing.T) {
+		m := prepareLockUnlockTest(t)
+		m.mutexErrorModal.Lock()
+		m.typingModal = typingModal{open: true}
+		pModel := prompt.DefaultModel(10, 10)
+		pModel.Open(false)
+		m.promptModal = pModel
+		zModel := zoxideui.GenerateModel(nil, 50, 80)
+		zModel.Open()
+		m.zoxideModal = zModel
+		m.notifyModel = notify.New(true, "test", "test", notify.RenameAction)
+		m.sidebarModel = sidebar.New()
+		m.sidebarModel.PinnedItemRename()
+		m.getFocusedFilePanel().SearchBar.Focus()
+		m.sidebarModel.SearchBarFocus()
+		m.sortModal.Open(sortmodel.SortByName)
+		m.helpMenu.Open()
+
+		actual := m.updateRenderForOverlay("test render")
+		assert.Contains(t, actual, "ERROR TEST")
+	})
 }
