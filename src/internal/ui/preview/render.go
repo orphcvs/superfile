@@ -195,15 +195,27 @@ func (m *Model) RenderWithPath(itemPath string, previewWidth int, previewHeight 
 		return renderDirectoryPreview(r, itemPath, contentHeight) + clearCmd
 	}
 
+	// Document text preview (PDF, DOCX, XLSX, PPTX, ODT, etc.)
+	// Must be checked before thumbnail generator, which would otherwise
+	// catch PDFs and render them as images instead of extractable text.
+	if converter := isDocumentFile(itemPath); converter != "" && converter != "plaintext" {
+		content, err := getDocumentTextContent(itemPath, converter, contentHeight,
+			m.hasPdftotext, m.hasPandoc)
+		if err != nil {
+			slog.Error("Document text preview failed", "error", err, "converter", converter, "path", itemPath)
+			// Fall through to thumbnail/image/text preview
+		} else {
+			r.AddLines(content)
+			return r.Render() + clearCmd
+		}
+	}
+
 	if m.thumbnailGenerator != nil && m.thumbnailGenerator.SupportsExt(ext) {
 		thumbnailPath, err := m.thumbnailGenerator.GetThumbnailOrGenerate(itemPath)
 		if err != nil {
 			slog.Error("Error generating thumbnail", "error", err)
 			return r.AddLines(common.FilePreviewThumbnailGenerationErrorText).Render() + clearCmd
 		}
-		// Notes : If renderImagePreview fails, and return some error message
-		// render, then we dont apply clearCmd. This might cause issues.
-		// same for below usage of renderImagePreview
 		return m.renderImagePreview(
 			r, thumbnailPath, contentWidth, contentHeight,
 			fullModelWidth-previewWidth, clearCmd)

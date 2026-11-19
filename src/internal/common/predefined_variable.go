@@ -64,6 +64,8 @@ var (
 	FilePreviewImageConversionErrorText     string
 	FilePreviewBatNotInstalledText          string
 	FilePreviewThumbnailGenerationErrorText string
+	FilePreviewDocConversionErrorText       string
+	FilePreviewDocToolMissingText           string
 
 	CheckboxChecked        string
 	CheckboxCheckedFocused string
@@ -90,6 +92,25 @@ var (
 		".webp": true,
 		".ico":  true,
 	}
+	// Document extensions that can be converted to text for preview.
+	// Maps extension to the converter tool name: "pdftotext", "pandoc"
+	DocumentExtensions = map[string]string{
+		".pdf":  "pdftotext",
+		".docx": "pandoc",
+		".doc":  "pandoc",
+		".xlsx": "xlsx2text",
+		".xls":  "xlsx2text",
+		".pptx": "pandoc",
+		".ppt":  "pandoc",
+		".odt":  "pandoc",
+		".ods":  "pandoc",
+		".odp":  "pandoc",
+		".epub": "pandoc",
+		".rtf":  "pandoc",
+		".csv":  "plaintext",
+		".tsv":  "plaintext",
+	}
+
 	VideoExtensions = map[string]bool{
 		".mkv":  true,
 		".mp4":  true,
@@ -166,6 +187,10 @@ func LoadPrerenderedVariables() {
 		"'bat' is not installed or not found")
 	FilePreviewThumbnailGenerationErrorText = wrapFilePreviewErrorMsg(
 		"Thumbnail generation failed")
+	FilePreviewDocConversionErrorText = wrapFilePreviewErrorMsg(
+		"Document text extraction failed")
+	FilePreviewDocToolMissingText = wrapFilePreviewErrorMsg(
+		"Document preview tool not installed (pdftotext/pandoc)")
 
 	CheckboxChecked = FilePanelSelectBoxStyle.
 		Foreground(FilePanelBorderColor).

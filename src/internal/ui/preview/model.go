@@ -22,6 +22,8 @@ type Model struct {
 	imagePreviewer     *filepreview.ImagePreviewer
 	batCmd             string
 	thumbnailGenerator *filepreview.ThumbnailGenerator
+	hasPdftotext       bool
+	hasPandoc          bool
 }
 
 func New() Model {
@@ -30,19 +32,14 @@ func New() Model {
 		slog.Error("Could not NewThumbnailGenerator object", "error", err)
 	}
 
+	hasPdftotext, hasPandoc := checkDocTools()
+
 	return Model{
 		open: common.Config.DefaultOpenFilePreview,
-		// TODO: This causes unnecessary terminal cell size detection
-		// logs in tests, we should not be initializing it in tests
-		// when  `DefaultOpenFilePreview` is false
-		// And only initialize these objects when Open() is called
-		// Still them being nil should be handled well, right we don't
-		// have code with good defensive programming
-		// Some of these processes are IO operations so maybe it should
-		// be done via an Init() function
 		imagePreviewer:     filepreview.NewImagePreviewer(),
 		thumbnailGenerator: generator,
-		// TODO:  This is an IO operation, move to async ?
-		batCmd: checkBatCmd(),
+		batCmd:             checkBatCmd(),
+		hasPdftotext:       hasPdftotext,
+		hasPandoc:          hasPandoc,
 	}
 }
