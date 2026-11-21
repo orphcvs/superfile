@@ -1,29 +1,35 @@
+import { unified } from "@astrojs/markdown-remark";
 import mdx from "@astrojs/mdx";
 import sitemap from "@astrojs/sitemap";
 import { defineConfig } from "astro/config";
 import remarkDirective from "remark-directive";
-import { remarkDirectivesHandler } from "./src/plugins/remarkDirectives.mjs";
+import { LATEST, parseTag } from "./docs.config.mjs";
+import { superfileShikiTheme } from "./src/lib/shiki-theme.mjs";
+import { rehypeDocs } from "./src/plugins/rehype-docs.mjs";
+import { remarkCallouts } from "./src/plugins/remark-callouts.mjs";
 
-const site = "https://superfile.dev/";
+// The docs that are not at the site root (/latest/… or /v1.5.0/…) are marked noindex.
+const isVersionedDocs = url => {
+	const [, first] = new URL(url).pathname.split("/");
+	return first === LATEST || parseTag(first) !== null;
+};
 
 export default defineConfig({
-	site,
-	integrations: [mdx(), sitemap()],
+	site: "https://superfile.dev",
+	// Astro 7 strips the whitespace between inline elements by default ("jsx"); the pages are written for the HTML rule.
+	compressHTML: true,
+	prefetch: { prefetchAll: true },
+	integrations: [mdx(), sitemap({ filter: url => !isVersionedDocs(url) })],
 
 	markdown: {
-		// Required for GFM tables in MDX content; undefined is treated as false by @astrojs/mdx.
-		gfm: true,
-		shikiConfig: {
-			theme: "catppuccin-mocha",
-			wrap: false
-		},
-		remarkPlugins: [remarkDirective, remarkDirectivesHandler]
+		// remark and rehype plugins need the unified processor; Astro's default (Sätteri) does not run them.
+		processor: unified({
+			remarkPlugins: [remarkDirective, remarkCallouts],
+			rehypePlugins: [rehypeDocs]
+		}),
+		shikiConfig: { theme: superfileShikiTheme }
 	},
 
-	image: {
-		service: {
-			entrypoint: "astro/assets/services/sharp",
-			config: { limitInputPixels: false }
-		}
-	}
+	// The demo GIFs are larger than sharp's default pixel limit.
+	image: { service: { config: { limitInputPixels: false } } }
 });

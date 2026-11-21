@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 
 	"github.com/adrg/xdg"
@@ -203,10 +204,10 @@ func ResolveAbsPath(currentDir string, path string) string {
 	if !filepath.IsAbs(currentDir) {
 		slog.Warn("currentDir is not absolute", "currentDir", currentDir)
 	}
-	if strings.HasPrefix(path, "~") {
-		// We dont use variable.HomeDir here, as the util package cannot have dependency
-		// on variable package
-		path = strings.Replace(path, "~", xdg.Home, 1)
+	if path == "~" {
+		path = xdg.Home
+	} else if strings.HasPrefix(path, "~/") || (runtime.GOOS == OsWindows && strings.HasPrefix(path, `~\`)) {
+		path = filepath.Join(xdg.Home, path[2:])
 	}
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(currentDir, path)
@@ -215,13 +216,16 @@ func ResolveAbsPath(currentDir string, path string) string {
 }
 
 // Get directory total size
-// TODO: Uni test this
 func DirSize(path string) int64 {
 	var size int64
 	// Its named walkErr to prevent shadowing
 	walkErr := filepath.WalkDir(path, func(_ string, entry os.DirEntry, err error) error {
+		// On a walk error (e.g. root does not exist, permission denied) WalkDir
+		// invokes the callback with err != nil and a nil entry. Return before
+		// touching entry to avoid a nil-pointer dereference.
 		if err != nil {
 			slog.Error("Dir size function error", "error", err)
+			return err
 		}
 		if !entry.IsDir() {
 			info, infoErr := entry.Info()
@@ -229,7 +233,7 @@ func DirSize(path string) int64 {
 				size += info.Size()
 			}
 		}
-		return err
+		return nil
 	})
 	if walkErr != nil {
 		slog.Error("errors during WalkDir", "error", walkErr)
